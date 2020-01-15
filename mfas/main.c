@@ -5,7 +5,7 @@
 #include <math.h>
 
 #define MAX_PROCESSES 1000
-#define TOTAL_SIMULATION_COUNT 10
+#define TOTAL_SIMULATION_COUNT 100000
 
 typedef unsigned short u16;
 typedef unsigned int usize;
@@ -73,7 +73,7 @@ usize minimum_feedback_arc_set(usize prev_min) {
 
     usize forward_count = 0;
     usize backward_count = 0;
-    for (u16 k = 0; k < vertex_count; k++) {
+    for (u16 k = 0; k < edge_count; k++) {
         struct edge e = edges[k];
         u16 index_u = inverted_A[e.u];
         u16 index_v = inverted_A[e.v];
@@ -138,8 +138,13 @@ int main(int argc, char **argv) {
         read_input();
         srand(time(NULL));
         for (int i = 0; i < process_count; i++) 
-            seeds[i] = rand();
+            seeds[i] = rand() + 0xfab13be;
     }
+
+    float start = MPI_Wtime();
+    float total_trans_time = 0.0;
+    float before = start;
+
     MPI_Bcast(&vertex_count, 1, MPI_UINT32_T, 0, MPI_COMM_WORLD);
     MPI_Bcast(&edge_count, 1, MPI_UINT32_T, 0, MPI_COMM_WORLD);
     MPI_Bcast(edges, edge_count * 2, MPI_UINT16_T, 0, MPI_COMM_WORLD);
@@ -147,12 +152,16 @@ int main(int argc, char **argv) {
     MPI_Scatter(seeds, 1, MPI_INT, &seed, 1, MPI_INT, 0, MPI_COMM_WORLD);
     srand(seed);
 
+    total_trans_time += MPI_Wtime() - before;
+
     usize minimum = edge_count;
     for (int n = 0; n < (TOTAL_SIMULATION_COUNT / process_count); n++) {
         minimum = minimum_feedback_arc_set(minimum);
     }
 
+    before = MPI_Wtime();
     MPI_Gather(&minimum, 1, MPI_INT, minimum_results, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    total_trans_time += MPI_Wtime() - before;
 
     int winner_rank = 0;
     usize winner_min = minimum;
@@ -164,22 +173,37 @@ int main(int argc, char **argv) {
             }
         }
     }
+
+    before = MPI_Wtime();
     MPI_Bcast(&winner_rank, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    total_trans_time += MPI_Wtime() - before;
 
     printf("Winner rank: %d\n", winner_rank);
 
-    if (rank == winner_rank) {
+    if (rank == winner_rank && winner_rank != 0) {
         MPI_Send(result_edges, minimum * 2, MPI_UINT16_T, 0, 111, MPI_COMM_WORLD);
     }
 
     if (rank == 0) {
+        before = MPI_Wtime();
+
         MPI_Status status;
-        MPI_Recv(result_edges, winner_min * 2, MPI_UINT16_T, winner_rank, 111, MPI_COMM_WORLD, &status);
-        printf("Minimum Feedback Arc Set: %d\n", winner_min);
-        for (u16 k = 0; k < winner_min; k++) {
-            struct edge e = result_edges[k];
-            printf("%d %d\n", e.u, e.v);
+        if (winner_rank != 0) {
+            MPI_Recv(result_edges, winner_min * 2, MPI_UINT16_T, winner_rank, 111, MPI_COMM_WORLD, &status);
         }
+
+        float end = MPI_Wtime();
+        total_trans_time += end - before;
+
+        printf("Minimum Feedback Arc Set: %d\n", winner_min);
+        printf("Total time: %f\n", end - start);
+        printf("Calculation time: %f\n", end - start - total_trans_time);
+        printf("Transmission time: %f\n", total_trans_time);
+
+        /* for (u16 k = 0; k < winner_min; k++) { */
+        /*     struct edge e = result_edges[k]; */
+        /*     printf("%d %d\n", e.u, e.v); */
+        /* } */
     }
 
     MPI_Finalize();
