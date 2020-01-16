@@ -7,6 +7,7 @@
 
 float heat_map1[MAX_SPACE * MAX_SPACE];
 float heat_map2[MAX_SPACE * MAX_SPACE];
+float h;
 float *A = heat_map1;
 float *B = heat_map2;
 size_t space_size;
@@ -31,6 +32,8 @@ void init() {
     fscanf(file, "%ld", &space_size);
     fscanf(file, "%ld", &region_count);
 
+    h = 1.0 / space_size;
+
     size_t region_size = space_size / region_count;
     for (size_t i = 0; i < region_count; i++) {
         for (size_t j = 0; j < region_count; j++) {
@@ -53,7 +56,7 @@ void simulate() {
             float sum = get(A, i, j - 1) + get(A, i - 1, j) -
                         4.0 * get(A, i, j) + get(A, i + 1, j) +
                         get(A, i, j + 1);
-            sum *= 0.01;
+            sum *= 0.000001 / (h * h);
             sum += get(A, i, j);
             B[i * space_size + j] = sum;
         }

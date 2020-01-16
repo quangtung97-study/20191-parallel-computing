@@ -16,6 +16,7 @@ float *B = heat_map2;
 float top_border[MAX_SPACE] = {BORDER_VALUE};
 float bottom_border[MAX_SPACE] = {BORDER_VALUE};
 
+float h;
 size_t space_size, space_width, space_height;
 
 void set_initial(size_t i, size_t j, float value) {
@@ -148,7 +149,7 @@ void simulate() {
             float sum = get(A, i, j - 1) + get(A, i - 1, j) -
                         4.0 * get(A, i, j) + get(A, i + 1, j) +
                         get(A, i, j + 1);
-            sum *= 0.01;
+            sum *= 0.000001 / (h * h);
             sum += get(A, i, j);
             B[i * space_width + j] = sum;
         }
@@ -186,6 +187,8 @@ int main(int argc, char **argv) {
     float total_trans_time = 0.0;
 
     MPI_Bcast(&space_size, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
+    h = 1.0 / space_size;
+
     total_trans_time += MPI_Wtime() - start;
 
     calculate_space_width_height(rank, process_count);
@@ -194,7 +197,7 @@ int main(int argc, char **argv) {
     send_borders(rank, process_count, &total_trans_time);
     recv_borders(rank, process_count, &total_trans_time);
 
-    for (size_t step = 0; step < 2000; step++) {
+    for (size_t step = 0; step < 3200; step++) {
         simulate();
 
         send_borders(rank, process_count, &total_trans_time);
